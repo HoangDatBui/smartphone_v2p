@@ -1,7 +1,10 @@
 import requests
 import json
 from datetime import datetime
-from crypto_utils import CryptoManager
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.crypto_utils import CryptoManager
 
 class SecureVRUClient:
     """VRU Smartphone Client with RSA encryption"""
