@@ -18,8 +18,8 @@ class SecureVRUClient:
         
         # Load VRU's own keys - THIS stays untouched
         self.crypto = CryptoManager(
-            private_key_path='keys/vru_client_private_key.pem',
-            public_key_path='keys/vru_client_public_key.pem'
+            private_key_path='../keys/vru_client_private_key.pem',
+            public_key_path='../keys/vru_client_public_key.pem'
         )
         
         # Store VRU's public key BEFORE loading anything else
