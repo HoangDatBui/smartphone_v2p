@@ -124,13 +124,6 @@ When a pedestrian approaches an intersection:
 }
 ```
 
-**Security Features:**
-
-- ✅ **End-to-End Encryption**: API key encrypted with Auth Cloud's public key (RSA-2048)
-- ✅ **Digital Signatures**: Request signed with VRU's private key (proves authenticity)
-- ✅ **Public Key Exchange**: VRU's public key sent for future verification
-- ✅ **Timestamp Validation**: Prevents replay attacks
-
 **Authentication Cloud Processing:**
 
 1. **Receives VRU's public key** and loads it into memory
@@ -214,13 +207,6 @@ After successful authentication:
 }
 ```
 
-**Security Features:**
-
-- ✅ **Encrypted Response**: Response encrypted with VRU's public key (only VRU can decrypt)
-- ✅ **Digital Signature**: Response signed with Auth Cloud's private key (proves authenticity)
-- ✅ **Session Token**: Temporary access certificate for subsequent communications
-- ✅ **RSU Discovery**: Location-based infrastructure identification
-
 **VRU Smartphone Processing:**
 
 1. Decrypts response using VRU's private key
@@ -242,11 +228,9 @@ After receiving the temporary certificate and RSU list:
 4. **The RSU validates** your temporary certificate
 5. **The RSU registers** your position for intersection signal control
 
-**Note:** This is **ONE-WAY communication** (VRU → RSU). The RSU does not send any data back to the VRU.
-
 ### Technical Details
 
-**VRU Smartphone → RSU (One-Way):**
+**VRU Smartphone → RSU:**
 
 ```python
 # The smartphone sends:
@@ -269,14 +253,6 @@ After receiving the temporary certificate and RSU list:
 }
 ```
 
-**Security Features:**
-
-- ✅ **End-to-End Encryption**: Position data encrypted with RSU's public key (RSA-2048)
-- ✅ **Temporary Certificate**: Proves VRU was authenticated by Auth Cloud
-- ✅ **Digital Signatures**: Request signed with VRU's private key
-- ✅ **Certificate Validation**: RSU validates the temporary certificate
-- ✅ **One-Way Communication**: No response from RSU (fire-and-forget)
-
 **RSU Processing:**
 
 1. **Loads VRU's public key** from the request
@@ -287,36 +263,6 @@ After receiving the temporary certificate and RSU list:
 6. **Calculates distance** to intersection
 7. **Returns HTTP 200** (acknowledgment only, no data)
 
-**Communication Flow Diagram:**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    STEP 3 FLOW (ONE-WAY)                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   VRU Smartphone                          RSU Server            │
-│        │                                      │                 │
-│        │  1. Request RSU's public key         │                 │
-│        │─────────────────────────────────────>│                 │
-│        │                                      │                 │
-│        │  2. RSU's public key                 │                 │
-│        │<─────────────────────────────────────│                 │
-│        │                                      │                 │
-│        │  3. Encrypted position + temp cert   │                 │
-│        │     + signature (ONE-WAY)            │                 │
-│        │─────────────────────────────────────>│                 │
-│        │                                      │                 │
-│        │                            4. Verify signature         │
-│        │                            5. Validate temp cert       │
-│        │                            6. Decrypt position         │
-│        │                            7. Register for signals     │
-│        │                                      │                 │
-│        │  HTTP 200 (acknowledgment only)      │                 │
-│        │<- - - - - - - - - - - - - - - - - - -│                 │
-│        │                                      │                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ---
 
 ## 🛠️ Project Structure
@@ -324,21 +270,21 @@ After receiving the temporary certificate and RSU list:
 ```
 smartphone_v2p/
 ├── auth/                              # Auth Cloud instance
-│   └── auth_cloud_server_secure.py    # Authentication Cloud server (Flask)
+│   └── auth_cloud_server_secure.py    
 ├── ru/                                # VRU Smartphone instance
-│   └── vru_client_secure.py           # VRU Smartphone client
-├── rsu/                               # RSU instance (separate from VRU)
-│   └── rsu_server.py                  # RSU Server (Step 3)
+│   └── vru_client_secure.py           
+├── rsu/                               # RSU instance
+│   └── rsu_server.py                  
 ├── shared/
 │   ├── crypto_utils.py                # Cryptographic utilities (RSA/AES)
 │   ├── generate_keys.py               # Key pair generation script
 │   └── requirements.txt               # Python dependencies
 └── keys/                              # RSA key pairs (generated per instance)
-    ├── auth_cloud_private_key.pem     # Auth Cloud keeps these
+    ├── auth_cloud_private_key.pem     
     ├── auth_cloud_public_key.pem
-    ├── vru_client_private_key.pem     # VRU keeps these
+    ├── vru_client_private_key.pem     
     ├── vru_client_public_key.pem
-    ├── rsu_private_key.pem            # RSU keeps these
+    ├── rsu_private_key.pem            
     └── rsu_public_key.pem
 ```
 
