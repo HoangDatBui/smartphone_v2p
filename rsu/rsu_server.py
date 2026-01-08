@@ -138,8 +138,6 @@ def register_position():
         print(f"   User: {user_id}")
         print(f"   Latitude: {precise_position.get('lat')}")
         print(f"   Longitude: {precise_position.get('lon')}")
-        print(f"   Accuracy: {precise_position.get('accuracy', 'N/A')}m")
-        print(f"   Heading: {precise_position.get('heading', 'N/A')}°")
         print(f"   Speed: {precise_position.get('speed', 'N/A')} m/s")
         
         # Store the VRU position for intersection signal control (Step 4)
@@ -150,21 +148,7 @@ def register_position():
             "last_update": datetime.utcnow().isoformat() + "Z"
         }
         
-        # Calculate distance to intersection (simple approximation)
-        import math
-        rsu_lat = RSU_INFO["location"]["lat"]
-        rsu_lon = RSU_INFO["location"]["lon"]
-        vru_lat = precise_position.get('lat', 0)
-        vru_lon = precise_position.get('lon', 0)
-        
-        # Haversine distance approximation (in meters)
-        lat_diff = abs(rsu_lat - vru_lat) * 111000  # ~111km per degree latitude
-        lon_diff = abs(rsu_lon - vru_lon) * 111000 * math.cos(math.radians(rsu_lat))
-        distance_to_intersection = math.sqrt(lat_diff**2 + lon_diff**2)
-        
-        print(f"\n📏 Distance to intersection: {distance_to_intersection:.1f}m")
         print(f"\n[STEP 3] ✅ VRU position registered successfully")
-        print(f"Ready for Step 4: Intersection Signal Control")
         
         # One-way communication - just acknowledge receipt with HTTP 200
         return '', 200

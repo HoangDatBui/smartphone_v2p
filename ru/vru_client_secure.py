@@ -255,7 +255,7 @@ def main():
     
     USER_ID = "VRU_USER_001"
     API_KEY = "sk_live_51234567890abcdef"
-    AUTH_CLOUD_URL = "http://127.0.0.1:8443"
+    AUTH_CLOUD_URL = "http://172.31.4.58:8443"
     
     # Step 1 & 2: Rough position for authentication
     POSTCODE = "4000"
@@ -270,7 +270,7 @@ def main():
     }
     
     # RSU URL - using first RSU from the list or direct connection
-    RSU_URL = "http://127.0.0.1:5000"
+    RSU_URL = "http://172.31.43.243:5000"
     
     print("=" * 60)
     print("SECURE VRU SMARTPHONE - V2P SAFETY SYSTEM")
