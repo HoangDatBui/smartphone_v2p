@@ -13,7 +13,7 @@ class SecureVRUClient:
         self.user_id = user_id
         self.api_key = api_key
         self.auth_cloud_url = auth_cloud_url
-        self.session_token = None
+        self.temporary_cert = None
         self.nearby_rsus = []
         
         # Load VRU's own keys - THIS stays untouched
@@ -29,6 +29,10 @@ class SecureVRUClient:
         # Separate storage for Auth Cloud's public key
         self.auth_cloud_crypto = None
         self.auth_cloud_public_key = None
+        
+        # RSU connection storage
+        self.rsu_crypto = None
+        self.rsu_public_key = None
     
     def get_auth_cloud_public_key(self):
         """Step 0: Get Auth Cloud's public key"""
@@ -136,9 +140,9 @@ class SecureVRUClient:
                 
                 if response_data.get("success"):
                     print(f"\n✅ Authentication successful!")
-                    print(f"Session Token: {response_data['session_token'][:20]}...")
+                    print(f"Temporary Certificate: {response_data['temporary_cert'][:20]}...")
                     
-                    self.session_token = response_data['session_token']
+                    self.temporary_cert = response_data['temporary_cert']
                     self.nearby_rsus = response_data['nearby_rsus']
                     
                     print(f"\n[STEP 2] Received {response_data['rsu_count']} nearby RSUs:")
@@ -160,17 +164,140 @@ class SecureVRUClient:
             import traceback
             traceback.print_exc()
             return False
+    
+    def get_rsu_public_key(self, rsu_url):
+        """Step 3a: Get RSU's public key"""
+        try:
+            print(f"\n[STEP 3a] Requesting RSU's public key...")
+            response = requests.get(
+                f"{rsu_url}/api/v1/public_key",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                public_key_pem = result['public_key']
+                
+                # Create SEPARATE CryptoManager for RSU's key
+                self.rsu_crypto = CryptoManager()
+                self.rsu_crypto.load_public_key_from_string(public_key_pem)
+                self.rsu_public_key = self.rsu_crypto.public_key
+                
+                print(f"✅ Received RSU's public key")
+                print(f"   RSU ID: {result.get('rsu_id')}")
+                print(f"   RSU Name: {result.get('rsu_name')}")
+                return True
+            else:
+                print(f"❌ Failed to get RSU public key: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error getting RSU public key: {e}")
+            return False
+    
+    def send_precise_position_to_rsu(self, rsu_url, precise_position):
+        """
+        Step 3: Send precise position to RSU using temporary certificate
+        
+        This is ONE-WAY communication (VRU -> RSU only, no response expected)
+        
+        Args:
+            rsu_url: URL of the RSU server (e.g., "http://203.123.45.10:5000")
+            precise_position: Dict with lat, lon, accuracy, heading, speed
+        
+        Returns:
+            bool: True if position sent successfully (HTTP 200)
+        """
+        # Ensure we have temporary certificate
+        if not self.temporary_cert:
+            print("❌ No temporary certificate. Run authentication first.")
+            return False
+        
+        # Get RSU's public key if not already obtained
+        if not self.rsu_public_key:
+            if not self.get_rsu_public_key(rsu_url):
+                return False
+        
+        print(f"\n[STEP 3] Sending precise position to RSU...")
+        print(f"📍 Position: ({precise_position.get('lat')}, {precise_position.get('lon')})")
+        print(f"   Speed: {precise_position.get('speed', 'N/A')} m/s")
+        
+        # Prepare position data payload
+        position_data = {
+            "user_id": self.user_id,
+            "precise_position": precise_position
+        }
+        
+        position_json = json.dumps(position_data)
+        
+        # Encrypt position data with RSU's public key
+        print(f"\n🔒 Encrypting position data with RSU's public key...")
+        encrypted_data = self.rsu_crypto.encrypt(position_json)
+        
+        # Prepare timestamp
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        
+        # Sign the request with VRU's private key
+        message_to_sign = f"{encrypted_data}{self.temporary_cert}{timestamp}"
+        
+        print(f"✍️  Signing request with VRU's private key...")
+        signature = self.crypto.sign(message_to_sign)
+        
+        # Prepare payload
+        payload = {
+            "encrypted_data": encrypted_data,
+            "temporary_cert": self.temporary_cert,
+            "vru_public_key": self.vru_public_key_string,
+            "signature": signature,
+            "timestamp": timestamp
+        }
+        
+        try:
+            response = requests.post(
+                f"{rsu_url}/api/v1/register_position",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            # One-way communication - just check HTTP status
+            if response.status_code == 200:
+                print(f"\n✅ Position sent to RSU successfully!")
+                print(f"   (One-way communication - no response from RSU)")
+                return True
+            else:
+                print(f"❌ RSU rejected the request: HTTP {response.status_code}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error sending to RSU: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
 
 def main():
-    """Test secure VRU client"""
+    """Test secure VRU client - Full workflow Steps 1-3"""
     
     USER_ID = "VRU_USER_001"
     API_KEY = "sk_live_51234567890abcdef"
-    AUTH_CLOUD_URL = "http://172.31.4.58:8443"
+    AUTH_CLOUD_URL = "http://127.0.0.1:8443"
     
+    # Step 1 & 2: Rough position for authentication
     POSTCODE = "4000"
     SUBURB = "Brisbane CBD"
     STATE = "QLD"
+    
+    # Step 3: Precise position (hard-coded for now)
+    # This would come from GPS in a real application
+    PRECISE_POSITION = {
+        "lat": -27.4695,
+        "lon": 153.0253,
+        "speed": 1.2            # Speed in m/s (walking pace)
+    }
+    
+    # RSU URL - using first RSU from the list or direct connection
+    RSU_URL = "http://127.0.0.1:5000"
     
     print("=" * 60)
     print("SECURE VRU SMARTPHONE - V2P SAFETY SYSTEM")
@@ -179,14 +306,42 @@ def main():
     
     client = SecureVRUClient(USER_ID, API_KEY, AUTH_CLOUD_URL)
     
+    # Steps 1 & 2: Authentication and RSU discovery
     success = client.authenticate_and_get_rsus(POSTCODE, SUBURB, STATE)
     
     if success:
         print("\n" + "=" * 60)
-        print("✅ SECURE TRUSTED CONNECTION ESTABLISHED")
-        print("🔒 All data encrypted end-to-end")
-        print("✍️  All messages cryptographically signed")
+        print("✅ STEPS 1 & 2 COMPLETE - Authentication Successful")
+        print("🔒 Temporary certificate received")
         print("=" * 60)
+        
+        # Step 3: Send precise position to RSU
+        print("\n" + "=" * 60)
+        print("STEP 3: CONNECTING TO RSU WITH PRECISE POSITION")
+        print("=" * 60)
+        
+        # Use RSU URL from nearby_rsus list or configured URL
+        rsu_url = RSU_URL
+        if client.nearby_rsus:
+            # In production, select the closest RSU
+            first_rsu = client.nearby_rsus[0]
+            print(f"\n📡 Connecting to RSU: {first_rsu['rsu_id']}")
+            print(f"   Name: {first_rsu['name']}")
+            # rsu_url = f"http://{first_rsu['ip']}:{first_rsu['port']}"
+        
+        position_success = client.send_precise_position_to_rsu(rsu_url, PRECISE_POSITION)
+        
+        if position_success:
+            print("\n" + "=" * 60)
+            print("✅ STEP 3 COMPLETE - Position Sent to RSU")
+            print("🔒 Position data encrypted with RSU's public key")
+            print("✍️  Request signed with VRU's private key")
+            print("📍 One-way communication: VRU → RSU")
+            print("=" * 60)
+        else:
+            print("\n" + "=" * 60)
+            print("❌ STEP 3 FAILED - RSU Connection Error")
+            print("=" * 60)
     else:
         print("\n" + "=" * 60)
         print("❌ AUTHENTICATION FAILED")

@@ -17,7 +17,7 @@ The system follows a **4-step secure communication protocol** as illustrated in 
 ```
 Step 1: Initial Authentication & Rough Positioning
 Step 2: Certificate Generation & RSU Discovery  
-Step 3: Precise Positioning & RSU Connection (Coming Soon)
+Step 3: Precise Positioning & RSU Connection ✅
 Step 4: Signal Control Integration (Coming Soon)
 ```
 
@@ -225,8 +225,97 @@ After successful authentication:
 
 1. Decrypts response using VRU's private key
 2. Verifies signature using Auth Cloud's public key
-3. Stores session token for future use
-4. Caches nearby RSU list for Step 3
+3. Stores temporary certificate for Step 3
+4. Caches nearby RSU list for RSU connection
+
+---
+
+## 📋 Step 3: Precise Positioning & RSU Connection
+
+### What Happens (Simple Explanation)
+
+After receiving the temporary certificate and RSU list:
+
+1. **Your smartphone** obtains your precise GPS location
+2. **You connect** to the nearest Roadside Unit (RSU)
+3. **You send** your precise position encrypted with the RSU's public key
+4. **The RSU validates** your temporary certificate
+5. **The RSU registers** your position for intersection signal control
+
+**Note:** This is **ONE-WAY communication** (VRU → RSU). The RSU does not send any data back to the VRU.
+
+### Technical Details
+
+**VRU Smartphone → RSU (One-Way):**
+
+```python
+# The smartphone sends:
+{
+    "encrypted_data": "<encrypted>",           # Position encrypted with RSU's public key
+    "temporary_cert": "<certificate>",         # From Step 2 authentication
+    "vru_public_key": "<public_key>",         # VRU's public key for signature verification
+    "signature": "<digital_signature>",        # Cryptographic proof of authenticity
+    "timestamp": "2024-01-15T10:30:02Z"       # Request timestamp
+}
+
+# The encrypted_data contains:
+{
+    "user_id": "VRU_USER_001",
+    "precise_position": {
+        "lat": -27.4695,                      # GPS latitude
+        "lon": 153.0253,                      # GPS longitude
+        "speed": 1.2                          # Speed in m/s
+    }
+}
+```
+
+**Security Features:**
+
+- ✅ **End-to-End Encryption**: Position data encrypted with RSU's public key (RSA-2048)
+- ✅ **Temporary Certificate**: Proves VRU was authenticated by Auth Cloud
+- ✅ **Digital Signatures**: Request signed with VRU's private key
+- ✅ **Certificate Validation**: RSU validates the temporary certificate
+- ✅ **One-Way Communication**: No response from RSU (fire-and-forget)
+
+**RSU Processing:**
+
+1. **Loads VRU's public key** from the request
+2. **Verifies the digital signature** using VRU's public key
+3. **Validates temporary certificate** (proves Auth Cloud authentication)
+4. **Decrypts position data** using RSU's private key
+5. **Registers VRU position** for intersection signal control
+6. **Calculates distance** to intersection
+7. **Returns HTTP 200** (acknowledgment only, no data)
+
+**Communication Flow Diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 3 FLOW (ONE-WAY)                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   VRU Smartphone                          RSU Server            │
+│        │                                      │                 │
+│        │  1. Request RSU's public key         │                 │
+│        │─────────────────────────────────────>│                 │
+│        │                                      │                 │
+│        │  2. RSU's public key                 │                 │
+│        │<─────────────────────────────────────│                 │
+│        │                                      │                 │
+│        │  3. Encrypted position + temp cert   │                 │
+│        │     + signature (ONE-WAY)            │                 │
+│        │─────────────────────────────────────>│                 │
+│        │                                      │                 │
+│        │                            4. Verify signature         │
+│        │                            5. Validate temp cert       │
+│        │                            6. Decrypt position         │
+│        │                            7. Register for signals     │
+│        │                                      │                 │
+│        │  HTTP 200 (acknowledgment only)      │                 │
+│        │<- - - - - - - - - - - - - - - - - - -│                 │
+│        │                                      │                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -234,19 +323,23 @@ After successful authentication:
 
 ```
 smartphone_v2p/
-├── auth/
+├── auth/                              # Auth Cloud instance
 │   └── auth_cloud_server_secure.py    # Authentication Cloud server (Flask)
-├── ru/
-│   └── vru_client_secure.py            # VRU Smartphone client
+├── ru/                                # VRU Smartphone instance
+│   └── vru_client_secure.py           # VRU Smartphone client
+├── rsu/                               # RSU instance (separate from VRU)
+│   └── rsu_server.py                  # RSU Server (Step 3)
 ├── shared/
-│   ├── crypto_utils.py                 # Cryptographic utilities (RSA/AES)
-│   ├── generate_keys.py                # Key pair generation script
-│   └── requirements.txt                # Python dependencies
-└── keys/                               # RSA key pairs (not in repo)
-    ├── auth_cloud_private_key.pem
+│   ├── crypto_utils.py                # Cryptographic utilities (RSA/AES)
+│   ├── generate_keys.py               # Key pair generation script
+│   └── requirements.txt               # Python dependencies
+└── keys/                              # RSA key pairs (generated per instance)
+    ├── auth_cloud_private_key.pem     # Auth Cloud keeps these
     ├── auth_cloud_public_key.pem
-    ├── vru_client_private_key.pem
-    └── vru_client_public_key.pem
+    ├── vru_client_private_key.pem     # VRU keeps these
+    ├── vru_client_public_key.pem
+    ├── rsu_private_key.pem            # RSU keeps these
+    └── rsu_public_key.pem
 ```
 
 ### Components
@@ -254,6 +347,7 @@ smartphone_v2p/
 | Component | File | Description |
 |-----------|------|-------------|
 | **Auth Cloud Server** | `auth/auth_cloud_server_secure.py` | Flask REST API handling authentication |
+| **RSU Server** | `rsu/rsu_server.py` | Roadside Unit server receiving VRU positions |
 | **VRU Client** | `ru/vru_client_secure.py` | Smartphone client implementation |
 | **CryptoManager** | `shared/crypto_utils.py` | All encryption/signing operations |
 | **Key Generator** | `shared/generate_keys.py` | RSA-2048 key pair generation |
@@ -290,6 +384,7 @@ smartphone_v2p/
    This creates:
    - `keys/auth_cloud_private_key.pem` & `keys/auth_cloud_public_key.pem`
    - `keys/vru_client_private_key.pem` & `keys/vru_client_public_key.pem`
+   - `keys/rsu_client_private_key.pem` & `keys/rsu_client_public_key.pem`
 
 4. **Configure the system:**
    - Update `AUTH_CLOUD_URL` in `ru/vru_client_secure.py` with your server address
@@ -297,7 +392,7 @@ smartphone_v2p/
 
 ### Running the System
 
-#### Start Authentication Cloud Server
+#### 1. Start Authentication Cloud Server
 
 ```bash
 cd auth
@@ -306,7 +401,16 @@ python auth_cloud_server_secure.py
 
 Server starts on `http://0.0.0.0:8443`
 
-#### Run VRU Client
+#### 2. Start RSU Server
+
+```bash
+cd rsu
+python rsu_server.py
+```
+
+Server starts on `http://0.0.0.0:5000`
+
+#### 3. Run VRU Client
 
 ```bash
 cd ru
@@ -314,52 +418,33 @@ python vru_client_secure.py
 ```
 
 The client will:
-1. Request Auth Cloud's public key
-2. Authenticate with encrypted credentials
-3. Receive and decrypt nearby RSU list
-4. Display connection status
+1. Request Auth Cloud's public key (Step 0)
+2. Authenticate with encrypted credentials (Step 1)
+3. Receive and decrypt nearby RSU list with temporary certificate (Step 2)
+4. Connect to RSU with precise position using temporary certificate (Step 3)
+5. Display connection and registration status
 
 ### Example Output
 
 ```
 ============================================================
 SECURE VRU SMARTPHONE - V2P SAFETY SYSTEM
-Using RSA-2048 Encryption
 ============================================================
 
-[STEP 0] Requesting Auth Cloud's public key...
-✅ Received Auth Cloud's public key
+[STEP 1] 🔒 API key encrypted & ✍️ request signed
+[STEP 1] Sending authentication: VRU_USER_001 @ Brisbane CBD, QLD 4000
 
-[STEP 1] Encrypting API key with Auth Cloud's public key...
-🔒 API key encrypted: MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+[STEP 2] 🔓 Response decrypted & ✅ signature verified
+✅ Authentication successful! Temporary certificate received.
+   Nearby RSUs: RSU_BNE_001 (Queen St & Adelaide St), RSU_BNE_002 (George St & Elizabeth St)
 
-✍️  Signing request with VRU's private key...
-✅ Request signed: X7kP9mN2vL5qR8tW3yZ6aB1cD4eF7gH0jK3mN6pQ9sT2...
-
-📤 Sending VRU's public key: -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
-
-[STEP 1] Sending secure authentication request...
-User ID: VRU_USER_001
-Location: Brisbane CBD, QLD 4000
-
-[STEP 2] 🔓 Decrypting response with VRU's private key...
-🔍 Verifying response signature with Auth Cloud's public key...
-✅ Response signature verified
-
-✅ Authentication successful!
-Session Token: abc123xyz789def456...
-
-[STEP 2] Received 2 nearby RSUs:
-  - RSU_BNE_001: Queen St & Adelaide St
-    Location: (-27.4698, 153.0251)
-  - RSU_BNE_002: George St & Elizabeth St
-    Location: (-27.4705, 153.0235)
+[STEP 3] 📡 Connecting to RSU_BNE_001...
+[STEP 3] 🔒 Position encrypted & ✍️ request signed
+📍 Position: (-27.4695, 153.0253) | Speed: 1.2 m/s
+✅ Position sent to RSU (one-way communication)
 
 ============================================================
-✅ SECURE TRUSTED CONNECTION ESTABLISHED
-🔒 All data encrypted end-to-end
-✍️  All messages cryptographically signed
+✅ ALL STEPS COMPLETE - VRU registered with intersection
 ============================================================
 ```
 
@@ -414,10 +499,88 @@ Handles secure authentication (Steps 1 & 2).
 {
     "success": true,
     "user_id": "VRU_USER_001",
-    "session_token": "<token>",
+    "temporary_cert": "<certificate>",
     "timestamp": "2024-01-15T10:30:01Z",
     "rough_position": {...},
     "nearby_rsus": [...],
     "rsu_count": 2
+}
+```
+
+### RSU Server Endpoints
+
+#### `GET /api/v1/public_key`
+Returns RSU's public key for encryption.
+
+**Response:**
+```json
+{
+    "success": true,
+    "public_key": "-----BEGIN PUBLIC KEY-----\n...",
+    "rsu_id": "RSU_BNE_001",
+    "rsu_name": "Queen St & Adelaide St",
+    "key_type": "RSA-2048",
+    "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+#### `POST /api/v1/register_position`
+Handles Step 3 - VRU precise position registration (ONE-WAY communication).
+
+**Request:**
+```json
+{
+    "encrypted_data": "<base64_encrypted>",
+    "temporary_cert": "<certificate_from_auth_cloud>",
+    "vru_public_key": "<pem_string>",
+    "signature": "<base64_signature>",
+    "timestamp": "2024-01-15T10:30:02Z"
+}
+```
+
+**Encrypted Data (before encryption):**
+```json
+{
+    "user_id": "VRU_USER_001",
+    "precise_position": {
+        "lat": -27.4695,
+        "lon": 153.0253,
+        "speed": 1.2
+    }
+}
+```
+
+**Response:**
+- `HTTP 200` - Position registered successfully (empty body)
+- `HTTP 400` - Bad request (missing fields or decryption failed)
+- `HTTP 401` - Unauthorized (invalid signature or certificate)
+
+#### `GET /api/v1/active_vrus`
+Returns list of active VRUs near this RSU (for intersection signal control).
+
+**Response:**
+```json
+{
+    "success": true,
+    "rsu_id": "RSU_BNE_001",
+    "active_vrus": 3,
+    "vrus": ["VRU_USER_001", "VRU_USER_002", "VRU_USER_003"],
+    "timestamp": "2024-01-15T10:30:05Z"
+}
+```
+
+#### `GET /api/v1/health`
+RSU health check.
+
+**Response:**
+```json
+{
+    "status": "healthy",
+    "service": "RSU Server - RSU_BNE_001",
+    "name": "Queen St & Adelaide St",
+    "location": {"lat": -27.4698, "lon": 153.0251},
+    "encryption": "RSA-2048",
+    "active_vrus": 3,
+    "timestamp": "2024-01-15T10:30:00Z"
 }
 ```

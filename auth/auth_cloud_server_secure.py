@@ -187,14 +187,14 @@ def authenticate_secure():
         # Find nearby RSUs
         nearby_rsus = RSU_DATABASE.get(postcode, [])
         
-        # Generate session token
-        session_token = secrets.token_urlsafe(32)
+        # Generate temporary certificate for RSU authentication
+        temporary_cert = secrets.token_urlsafe(32)
         
         # Prepare response
         response_data = {
             "success": True,
             "user_id": user_id,
-            "session_token": session_token,
+            "temporary_cert": temporary_cert,
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "rough_position": rough_position,
             "nearby_rsus": nearby_rsus,

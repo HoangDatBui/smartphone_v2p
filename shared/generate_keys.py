@@ -34,20 +34,23 @@ def generate_key_pair(name):
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
     
-    # Create keys directory if it doesn't exist
-    os.makedirs('keys', exist_ok=True)
+    # Create keys directory in parent folder (smartphone_v2p/keys/)
+    keys_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'keys')
+    os.makedirs(keys_dir, exist_ok=True)
     
     # Save private key
-    with open(f'keys/{name}_private_key.pem', 'wb') as f:
+    private_path = os.path.join(keys_dir, f'{name}_private_key.pem')
+    with open(private_path, 'wb') as f:
         f.write(private_pem)
     
     # Save public key
-    with open(f'keys/{name}_public_key.pem', 'wb') as f:
+    public_path = os.path.join(keys_dir, f'{name}_public_key.pem')
+    with open(public_path, 'wb') as f:
         f.write(public_pem)
     
     print(f"✅ Generated key pair for {name}")
-    print(f"   Private key: keys/{name}_private_key.pem")
-    print(f"   Public key:  keys/{name}_public_key.pem")
+    print(f"   Private key: {private_path}")
+    print(f"   Public key:  {public_path}")
 
 def main():
     print("=" * 60)
@@ -55,20 +58,25 @@ def main():
     print("=" * 60)
     
     # Generate keys for Auth Cloud
-    print("\n[1/2] Generating Auth Cloud keys...")
+    print("\n[1/3] Generating Auth Cloud keys...")
     generate_key_pair('auth_cloud')
     
     # Generate keys for VRU Client
-    print("\n[2/2] Generating VRU Client keys...")
+    print("\n[2/3] Generating VRU Client keys...")
     generate_key_pair('vru_client')
+    
+    # Generate keys for RSU (Roadside Unit)
+    print("\n[3/3] Generating RSU keys...")
+    generate_key_pair('rsu')
     
     print("\n" + "=" * 60)
     print("✅ KEY GENERATION COMPLETE")
     print("=" * 60)
     print("\nNext steps:")
     print("1. Copy auth_cloud keys to Auth Cloud instance")
-    print("2. Copy vru_client keys to VRU/RSU instance")
-    print("3. Exchange public keys between systems")
+    print("2. Copy vru_client keys to VRU instance")
+    print("3. Copy rsu keys to RSU instance")
+    print("4. Exchange public keys between systems")
     print("=" * 60)
 
 if __name__ == "__main__":
