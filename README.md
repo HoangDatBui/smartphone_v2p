@@ -23,7 +23,7 @@ Step 4: Signal Control Integration (Coming Soon)
 
 ---
 
-## 🔐 Security & Cryptographic Design
+## Security & Cryptographic Design
 
 ### Why Security Matters
 
@@ -92,7 +92,7 @@ is_valid = crypto.verify_signature(message, signature, sender_public_key)
 
 ---
 
-## 📋 Step 1: Secure Authentication & Rough Positioning
+## Step 1: Secure Authentication & Rough Positioning
 
 ### What Happens (Simple Explanation)
 
@@ -169,7 +169,7 @@ The signature ensures the request hasn't been tampered with and came from the re
 
 ---
 
-## 📋 Step 2: Certificate Generation & RSU Discovery
+## Step 2: Certificate Generation & RSU Discovery
 
 ### What Happens (Simple Explanation)
 
@@ -216,7 +216,7 @@ After successful authentication:
 
 ---
 
-## 📋 Step 3: Precise Positioning & RSU Connection
+## Step 3: Precise Positioning & RSU Connection
 
 ### What Happens (Simple Explanation)
 
@@ -265,7 +265,7 @@ After receiving the temporary certificate and RSU list:
 
 ---
 
-## 🛠️ Project Structure
+## Project Structure
 
 ```
 smartphone_v2p/
@@ -277,15 +277,11 @@ smartphone_v2p/
 │   └── rsu_server.py                  
 ├── shared/
 │   ├── crypto_utils.py                # Cryptographic utilities (RSA/AES)
+│   ├── database.py                    # PostgreSQL database module
+│   ├── migrate.py                     # Database migration script
 │   ├── generate_keys.py               # Key pair generation script
 │   └── requirements.txt               # Python dependencies
 └── keys/                              # RSA key pairs (generated per instance)
-    ├── auth_cloud_private_key.pem     
-    ├── auth_cloud_public_key.pem
-    ├── vru_client_private_key.pem     
-    ├── vru_client_public_key.pem
-    ├── rsu_private_key.pem            
-    └── rsu_public_key.pem
 ```
 
 ### Components
@@ -296,11 +292,44 @@ smartphone_v2p/
 | **RSU Server** | `rsu/rsu_server.py` | Roadside Unit server receiving VRU positions |
 | **VRU Client** | `ru/vru_client_secure.py` | Smartphone client implementation |
 | **CryptoManager** | `shared/crypto_utils.py` | All encryption/signing operations |
-| **Key Generator** | `shared/generate_keys.py` | RSA-2048 key pair generation |
+| **Database** | `shared/database.py` | PostgreSQL connection & user verification |
+| **Migration** | `shared/migrate.py` | Creates tables & inserts test data |
 
 ---
 
-## 🚀 Getting Started
+## Database (PostgreSQL)
+
+User credentials are stored in PostgreSQL. When Auth Cloud receives an authentication request, it decrypts the API key and compares its SHA-256 hash against the stored hash in the database.
+
+**Table: `vru_users`**
+
+| Column | Type |
+|--------|------|
+| user_id | VARCHAR(50) |
+| api_key_hash | VARCHAR(255) |
+| username | VARCHAR(100) |
+| password | VARCHAR(255) |
+| active | BOOLEAN |
+
+**Setup (run once on Auth Cloud instance):**
+
+```bash
+# Install PostgreSQL
+sudo apt install postgresql postgresql-contrib -y
+
+# Create database & user
+sudo -u postgres psql -c "CREATE DATABASE v2p_auth;"
+sudo -u postgres psql -c "CREATE USER v2p_user WITH ENCRYPTED PASSWORD 'V2P_Secure_2024!';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE v2p_auth TO v2p_user;"
+
+# Run migration (creates tables + test user)
+cd shared
+python3 migrate.py
+```
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
@@ -338,11 +367,18 @@ smartphone_v2p/
 
 ### Running the System
 
+#### 0. Run Database Migration (first time only)
+
+```bash
+cd shared
+python3 migrate.py
+```
+
 #### 1. Start Authentication Cloud Server
 
 ```bash
 cd auth
-python auth_cloud_server_secure.py
+python3 auth_cloud_server_secure.py
 ```
 
 Server starts on `http://0.0.0.0:8443`

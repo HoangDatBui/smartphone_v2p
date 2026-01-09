@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.crypto_utils import CryptoManager
+from shared.database import get_db
 import json
 import traceback
 
@@ -16,18 +17,10 @@ crypto = CryptoManager(
     public_key_path='../keys/auth_cloud_public_key.pem'
 )
 
-# Store VRU public keys
-VRU_PUBLIC_KEYS = {}
+# Initialize database connection (for user authentication)
+db = get_db()
 
-# Valid users database
-VALID_USERS = {
-    "VRU_USER_001": {
-        "api_key": "sk_live_51234567890abcdef",
-        "active": True
-    }
-}
-
-# RSU database
+# RSU database (hardcoded for now)
 RSU_DATABASE = {
     "4000": [
         {
@@ -157,34 +150,16 @@ def authenticate_secure():
                 "error": "Decryption failed"
             }), 401
         
-        # Validate decrypted API key
-        if user_id not in VALID_USERS:
-            print(f"❌ Unknown user: {user_id}")
+        # Validate decrypted API key using database
+        if not db.verify_api_key(user_id, decrypted_api_key):
             return jsonify({
                 "success": False,
-                "error": "Unknown user"
-            }), 401
-        
-        if not VALID_USERS[user_id]["active"]:
-            print(f"❌ User inactive: {user_id}")
-            return jsonify({
-                "success": False,
-                "error": "Account inactive"
-            }), 401
-        
-        expected_key = VALID_USERS[user_id]["api_key"]
-        if not secrets.compare_digest(decrypted_api_key, expected_key):
-            print(f"❌ API key mismatch!")
-            print(f"   Expected: {expected_key[:20]}...")
-            print(f"   Got:      {decrypted_api_key[:20]}...")
-            return jsonify({
-                "success": False,
-                "error": "Invalid API key"
+                "error": "Invalid credentials"
             }), 401
         
         print("✅ API key validated - user authenticated")
         
-        # Find nearby RSUs
+        # Find nearby RSUs (hardcoded)
         nearby_rsus = RSU_DATABASE.get(postcode, [])
         
         # Generate temporary certificate for RSU authentication
@@ -239,6 +214,6 @@ def health():
 if __name__ == '__main__':
     print("=" * 60)
     print("SECURE AUTHENTICATION CLOUD SERVER")
-    print("Using RSA-2048 encryption")
+    print("Using RSA-2048 encryption + PostgreSQL")
     print("=" * 60)
     app.run(host='0.0.0.0', port=8443, debug=True)
