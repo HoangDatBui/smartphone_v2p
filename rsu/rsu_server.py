@@ -65,6 +65,7 @@ def register_position():
         
         encrypted_data = data.get('encrypted_data')
         temporary_cert = data.get('temporary_cert')
+        cert_expires_at = data.get('cert_expires_at')
         vru_public_key_pem = data.get('vru_public_key')
         signature = data.get('signature')
         timestamp = data.get('timestamp')
@@ -109,15 +110,33 @@ def register_position():
             return '', 401
         
         # Validate temporary certificate
-        # In production, this would verify against Auth Cloud or a distributed cache
         print(f"\n🔐 Validating temporary certificate...")
         print(f"Certificate (preview): {temporary_cert[:30]}...")
         
-        # For this implementation, we accept valid-looking certificates
-        # In production, verify with Auth Cloud or check against issued certificates
+        # Check certificate format
         if len(temporary_cert) < 20:
             print("❌ Invalid temporary certificate!")
             return '', 401
+        
+        # Check expiration (certificate valid for 20 minutes)
+        if cert_expires_at:
+            try:
+                expiry_time = datetime.fromisoformat(cert_expires_at.replace('Z', '+00:00'))
+                current_time = datetime.utcnow().replace(tzinfo=expiry_time.tzinfo)
+                
+                if current_time > expiry_time:
+                    print(f"❌ Temporary certificate expired!")
+                    print(f"   Expired at: {expiry_time}")
+                    print(f"   Current time: {current_time}")
+                    return '', 401
+                
+                print(f"✅ Certificate valid until: {expiry_time}")
+            except Exception as e:
+                print(f"⚠️  Could not parse expiration time: {e}")
+                # Continue validation if expiration parsing fails (backward compatibility)
+        else:
+            print("⚠️  No expiration time provided - accepting certificate")
+        
         print("✅ Temporary certificate validated")
         
         # Decrypt the position data

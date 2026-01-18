@@ -14,6 +14,7 @@ class SecureVRUClient:
         self.api_key = api_key
         self.auth_cloud_url = auth_cloud_url
         self.temporary_cert = None
+        self.cert_expires_at = None
         self.nearby_rsus = []
         
         # Load VRU's own keys - THIS stays untouched
@@ -123,6 +124,7 @@ class SecureVRUClient:
                 
                 if response_data.get("success"):
                     self.temporary_cert = response_data['temporary_cert']
+                    self.cert_expires_at = response_data.get('cert_expires_at')
                     self.nearby_rsus = response_data['nearby_rsus']
                     
                     # Format RSU list concisely
@@ -222,6 +224,7 @@ class SecureVRUClient:
         payload = {
             "encrypted_data": encrypted_data,
             "temporary_cert": self.temporary_cert,
+            "cert_expires_at": self.cert_expires_at,
             "vru_public_key": self.vru_public_key_string,
             "signature": signature,
             "timestamp": timestamp

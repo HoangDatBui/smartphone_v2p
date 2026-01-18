@@ -128,9 +128,10 @@ When a pedestrian approaches an intersection:
 
 1. **Receives VRU's public key** and loads it into memory
 2. **Verifies the digital signature** using VRU's public key (see below)
-3. **Decrypts the API key** using Auth Cloud's private key
-4. **Validates credentials** against user database
-5. **Identifies nearby RSUs** based on postcode
+3. **Validates timestamp** - request must be within 20 minutes (prevents replay attacks)
+4. **Decrypts the API key** using Auth Cloud's private key
+5. **Validates credentials** against user database
+6. **Identifies nearby RSUs** based on postcode
 
 **How Signature Verification Works:**
 
@@ -167,6 +168,11 @@ The signature ensures the request hasn't been tampered with and came from the re
 - Hash B (from the signature) remains the original hash
 - Mismatch = tampering detected → request rejected
 
+**Timestamp Expiration:**
+- Authentication requests expire after **20 minutes** from the timestamp
+- Prevents replay attacks (old intercepted requests cannot be reused)
+- Clock skew tolerance: up to 5 minutes for future timestamps
+
 ---
 
 ## Step 2: Certificate Generation & RSU Discovery
@@ -175,11 +181,11 @@ The signature ensures the request hasn't been tampered with and came from the re
 
 After successful authentication:
 
-1. **The cloud generates** a temporary access certificate (session token)
+1. **The cloud generates** a temporary access certificate (session token) **valid for 20 minutes**
 2. **The cloud finds** all nearby roadside units in your area
 3. **The cloud encrypts** this information specifically for your device
 4. **The cloud signs** the response so you know it's authentic
-5. **Your smartphone receives** the list of nearby infrastructure
+5. **Your smartphone receives** the list of nearby infrastructure and certificate expiration time
 
 ### Technical Details
 
@@ -190,7 +196,8 @@ After successful authentication:
 {
     "success": True,
     "user_id": "VRU_USER_001",
-    "session_token": "<temporary_access_certificate>",  # Valid for this session
+    "temporary_cert": "<temporary_access_certificate>",  # Valid for 20 minutes
+    "cert_expires_at": "2024-01-15T10:50:01Z",          # Expiration timestamp
     "timestamp": "2024-01-15T10:30:01Z",
     "rough_position": {...},
     "nearby_rsus": [                                    # List of nearby infrastructure
@@ -211,8 +218,12 @@ After successful authentication:
 
 1. Decrypts response using VRU's private key
 2. Verifies signature using Auth Cloud's public key
-3. Stores temporary certificate for Step 3
+3. Stores temporary certificate and expiration time for Step 3
 4. Caches nearby RSU list for RSU connection
+
+**Certificate Expiration:**
+- Temporary certificates are valid for **20 minutes** from issuance
+- After expiration, VRU must re-authenticate with Auth Cloud to get a new certificate
 
 ---
 
@@ -237,6 +248,7 @@ After receiving the temporary certificate and RSU list:
 {
     "encrypted_data": "<encrypted>",           # Position encrypted with RSU's public key
     "temporary_cert": "<certificate>",         # From Step 2 authentication
+    "cert_expires_at": "2024-01-15T10:50:01Z", # Certificate expiration timestamp
     "vru_public_key": "<public_key>",         # VRU's public key for signature verification
     "signature": "<digital_signature>",        # Cryptographic proof of authenticity
     "timestamp": "2024-01-15T10:30:02Z"       # Request timestamp
@@ -257,11 +269,42 @@ After receiving the temporary certificate and RSU list:
 
 1. **Loads VRU's public key** from the request
 2. **Verifies the digital signature** using VRU's public key
-3. **Validates temporary certificate** (proves Auth Cloud authentication)
+3. **Validates temporary certificate** (see below)
 4. **Decrypts position data** using RSU's private key
 5. **Registers VRU position** for intersection signal control
-6. **Calculates distance** to intersection
-7. **Returns HTTP 200** (acknowledgment only, no data)
+6. **Returns HTTP 200** (acknowledgment only, no data)
+
+**How RSU Validates Temporary Certificate:**
+
+The RSU validates the certificate through multiple checks:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              TEMPORARY CERTIFICATE VALIDATION                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   1. Format Check                                               │
+│      └─ Certificate length ≥ 20 characters?                    │
+│         ❌ Too short → Invalid format → Reject                  │
+│                                                                 │
+│   2. Expiration Check                                           │
+│      └─ Current time < cert_expires_at?                        │
+│         ❌ Expired → Certificate invalid → Reject               │
+│         ✅ Valid → Continue                                     │
+│                                                                 │
+│   3. Signature Verification                                     │
+│      └─ Request signed with VRU's private key?                 │
+│         ❌ Invalid signature → Reject                           │
+│         ✅ Valid signature → Accept                             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Important Notes:**
+
+- **Current Implementation**: RSU trusts certificates that pass format and expiration checks. The certificate itself is a random token generated by Auth Cloud.
+- **Production Recommendation**: RSU should verify certificates with Auth Cloud or use a distributed cache (Redis) to check if the certificate was actually issued and hasn't been revoked.
+- **Why This Works**: The certificate is encrypted and signed by Auth Cloud in Step 2, so only authenticated users receive valid certificates. The 20-minute expiration limits the window for potential misuse.
 
 ---
 

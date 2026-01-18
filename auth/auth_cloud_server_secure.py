@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -137,6 +137,41 @@ def authenticate_secure():
         
         print("✅ Signature verified - request is authentic")
         
+        # Validate timestamp (prevent replay attacks - request must be within 20 minutes)
+        try:
+            request_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            current_time = datetime.utcnow().replace(tzinfo=request_time.tzinfo)
+            time_diff = (current_time - request_time).total_seconds() / 60  # Convert to minutes
+            
+            if time_diff > 20:
+                print(f"❌ Request timestamp expired!")
+                print(f"   Request time: {request_time}")
+                print(f"   Current time: {current_time}")
+                print(f"   Time difference: {time_diff:.1f} minutes")
+                return jsonify({
+                    "success": False,
+                    "error": "Request expired (must be within 20 minutes)"
+                }), 401
+            
+            if time_diff < 0:
+                print(f"⚠️  Request timestamp is in the future!")
+                print(f"   Request time: {request_time}")
+                print(f"   Current time: {current_time}")
+                # Allow small clock skew (up to 5 minutes)
+                if abs(time_diff) > 5:
+                    return jsonify({
+                        "success": False,
+                        "error": "Invalid timestamp (clock skew too large)"
+                    }), 401
+            
+            print(f"✅ Timestamp valid (age: {time_diff:.1f} minutes)")
+        except Exception as e:
+            print(f"❌ Timestamp validation error: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Invalid timestamp format"
+            }), 400
+        
         # Decrypt API key
         try:
             print(f"\n🔓 Decrypting API key...")
@@ -162,14 +197,16 @@ def authenticate_secure():
         # Find nearby RSUs (hardcoded)
         nearby_rsus = RSU_DATABASE.get(postcode, [])
         
-        # Generate temporary certificate for RSU authentication
+        # Generate temporary certificate for RSU authentication (valid for 20 minutes)
         temporary_cert = secrets.token_urlsafe(32)
+        cert_expires_at = datetime.utcnow() + timedelta(minutes=20)
         
         # Prepare response
         response_data = {
             "success": True,
             "user_id": user_id,
             "temporary_cert": temporary_cert,
+            "cert_expires_at": cert_expires_at.isoformat() + "Z",
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "rough_position": rough_position,
             "nearby_rsus": nearby_rsus,
