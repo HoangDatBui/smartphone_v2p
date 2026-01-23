@@ -27,7 +27,7 @@ RSU_DATABASE = {
             "rsu_id": "RSU_BNE_001",
             "name": "Queen St & Adelaide St",
             "location": {"lat": -27.4698, "lon": 153.0251},
-            "ip": "203.123.45.10",
+            "ip": "3.25.61.202",
             "port": 5000
         },
         {
