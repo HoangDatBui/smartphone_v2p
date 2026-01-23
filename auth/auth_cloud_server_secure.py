@@ -29,13 +29,6 @@ RSU_DATABASE = {
             "location": {"lat": -27.4698, "lon": 153.0251},
             "ip": "3.25.61.202",
             "port": 5000
-        },
-        {
-            "rsu_id": "RSU_BNE_002", 
-            "name": "George St & Elizabeth St",
-            "location": {"lat": -27.4705, "lon": 153.0235},
-            "ip": "203.123.45.11",
-            "port": 5000
         }
     ],
     "4006": [
