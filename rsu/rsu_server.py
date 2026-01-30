@@ -10,7 +10,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.crypto_utils import CryptoManager
 import json
-import traceback
 
 app = Flask(__name__)
 
@@ -79,43 +78,33 @@ def register_position():
             if not signature: missing.append("signature")
             if not timestamp: missing.append("timestamp")
             
-            print(f"❌ Missing required fields: {', '.join(missing)}")
+            print(f"[RSU] ❌ Missing required fields: {', '.join(missing)}")
             return '', 400
         
-        print(f"\n[STEP 3] Position registration request received")
-        print(f"RSU: {RSU_INFO['rsu_id']} - {RSU_INFO['name']}")
-        
         # Load VRU's public key
-        print(f"\nLoading VRU's public key...")
         try:
             vru_crypto = CryptoManager()
             vru_crypto.load_public_key_from_string(vru_public_key_pem)
-            print(f"✅ VRU public key loaded successfully")
         except Exception as e:
-            print(f"❌ Failed to load VRU public key: {e}")
+            print(f"[RSU] ❌ Failed to load VRU public key: {e}")
             return '', 400
         
         # Verify signature (proves the request came from the VRU)
         message_to_verify = f"{encrypted_data}{temporary_cert}{timestamp}"
         
-        print(f"\n🔍 Verifying request signature...")
         try:
             is_valid = vru_crypto.verify_signature(message_to_verify, signature)
             if not is_valid:
-                print("❌ Signature verification failed!")
+                print(f"[RSU] ❌ Signature verification failed")
                 return '', 401
-            print("✅ Signature verified - request is authentic")
         except Exception as e:
-            print(f"❌ Signature verification error: {e}")
+            print(f"[RSU] ❌ Signature verification error: {e}")
             return '', 401
         
         # Validate temporary certificate
-        print(f"\n🔐 Validating temporary certificate...")
-        print(f"Certificate (preview): {temporary_cert[:30]}...")
-        
         # Check certificate format
         if len(temporary_cert) < 20:
-            print("❌ Invalid temporary certificate!")
+            print(f"[RSU] ❌ Invalid temporary certificate")
             return '', 401
         
         # Check expiration (certificate valid for 20 minutes)
@@ -125,39 +114,23 @@ def register_position():
                 current_time = datetime.utcnow().replace(tzinfo=expiry_time.tzinfo)
                 
                 if current_time > expiry_time:
-                    print(f"❌ Temporary certificate expired!")
-                    print(f"   Expired at: {expiry_time}")
-                    print(f"   Current time: {current_time}")
+                    print(f"[RSU] ❌ Temporary certificate expired")
                     return '', 401
-                
-                print(f"✅ Certificate valid until: {expiry_time}")
             except Exception as e:
-                print(f"⚠️  Could not parse expiration time: {e}")
                 # Continue validation if expiration parsing fails (backward compatibility)
-        else:
-            print("⚠️  No expiration time provided - accepting certificate")
-        
-        print("✅ Temporary certificate validated")
+                pass
         
         # Decrypt the position data
-        print(f"\n🔓 Decrypting position data...")
         try:
             decrypted_data = crypto.decrypt(encrypted_data)
             position_data = json.loads(decrypted_data)
-            print(f"✅ Position data decrypted successfully")
         except Exception as e:
-            print(f"❌ Decryption failed: {e}")
+            print(f"[RSU] ❌ Decryption failed: {e}")
             return '', 400
         
         # Extract precise position
         precise_position = position_data.get('precise_position', {})
         user_id = position_data.get('user_id')
-        
-        print(f"\n📍 Received Precise Position:")
-        print(f"   User: {user_id}")
-        print(f"   Latitude: {precise_position.get('lat')}")
-        print(f"   Longitude: {precise_position.get('lon')}")
-        print(f"   Speed: {precise_position.get('speed', 'N/A')} m/s")
         
         # Store the VRU position for intersection signal control (Step 4)
         ACTIVE_VRU_POSITIONS[user_id] = {
@@ -167,14 +140,13 @@ def register_position():
             "last_update": datetime.utcnow().isoformat() + "Z"
         }
         
-        print(f"\n[STEP 3] ✅ VRU position registered successfully")
+        print(f"[RSU] ✅ Position registered: {user_id} ({precise_position.get('lat')}, {precise_position.get('lon')})")
         
         # One-way communication - just acknowledge receipt with HTTP 200
         return '', 200
         
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
-        traceback.print_exc()
+        print(f"[RSU] ❌ Error: {e}")
         return '', 500
 
 

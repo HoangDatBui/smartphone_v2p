@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.crypto_utils import CryptoManager
 from shared.database import get_db
 import json
-import traceback
 
 app = Flask(__name__)
 
@@ -80,20 +79,14 @@ def authenticate_secure():
                 "error": f"Missing required fields: {', '.join(missing)}"
             }), 400
         
-        print(f"\n[STEP 1] Authentication request from {user_id}")
-        print(f"Location: {rough_position.get('suburb')}, {postcode}")
+        print(f"[AUTH] Request from {user_id} ({rough_position.get('suburb')}, {postcode})")
         
         # Create a separate CryptoManager for the VRU
-        print(f"\nLoading VRU's public key...")
-        print(f"Public key preview: {vru_public_key_pem[:100]}...")
-        
         try:
             vru_crypto = CryptoManager()
             vru_crypto.load_public_key_from_string(vru_public_key_pem)
-            print(f"✅ VRU public key loaded successfully")
         except Exception as e:
-            print(f"❌ Failed to load VRU public key: {e}")
-            traceback.print_exc()
+            print(f"[AUTH] ❌ Invalid VRU public key: {e}")
             return jsonify({
                 "success": False,
                 "error": "Invalid VRU public key"
@@ -102,33 +95,21 @@ def authenticate_secure():
         # Verify signature
         message_to_verify = f"{user_id}{encrypted_api_key}{timestamp}"
         
-        print(f"\n🔍 Signature Verification Debug:")
-        print(f"  User ID: {user_id}")
-        print(f"  Encrypted API key (first 50 chars): {encrypted_api_key[:50]}...")
-        print(f"  Timestamp: {timestamp}")
-        print(f"  Message length: {len(message_to_verify)} chars")
-        print(f"  Signature (first 50 chars): {signature[:50]}...")
-        print(f"  Signature length: {len(signature)} chars")
-        
         try:
             is_valid = vru_crypto.verify_signature(message_to_verify, signature)
-            print(f"  Verification result: {is_valid}")
         except Exception as e:
-            print(f"❌ Signature verification threw exception: {e}")
-            traceback.print_exc()
+            print(f"[AUTH] ❌ Signature verification error: {e}")
             return jsonify({
                 "success": False,
                 "error": f"Signature verification error: {str(e)}"
             }), 401
         
         if not is_valid:
-            print("❌ Signature verification failed!")
+            print(f"[AUTH] ❌ Invalid signature from {user_id}")
             return jsonify({
                 "success": False,
                 "error": "Invalid signature"
             }), 401
-        
-        print("✅ Signature verified - request is authentic")
         
         # Validate timestamp (prevent replay attacks - request must be within 20 minutes)
         try:
@@ -137,29 +118,21 @@ def authenticate_secure():
             time_diff = (current_time - request_time).total_seconds() / 60  # Convert to minutes
             
             if time_diff > 20:
-                print(f"❌ Request timestamp expired!")
-                print(f"   Request time: {request_time}")
-                print(f"   Current time: {current_time}")
-                print(f"   Time difference: {time_diff:.1f} minutes")
+                print(f"[AUTH] ❌ Request expired from {user_id}")
                 return jsonify({
                     "success": False,
                     "error": "Request expired (must be within 20 minutes)"
                 }), 401
             
             if time_diff < 0:
-                print(f"⚠️  Request timestamp is in the future!")
-                print(f"   Request time: {request_time}")
-                print(f"   Current time: {current_time}")
                 # Allow small clock skew (up to 5 minutes)
                 if abs(time_diff) > 5:
                     return jsonify({
                         "success": False,
                         "error": "Invalid timestamp (clock skew too large)"
                     }), 401
-            
-            print(f"✅ Timestamp valid (age: {time_diff:.1f} minutes)")
         except Exception as e:
-            print(f"❌ Timestamp validation error: {e}")
+            print(f"[AUTH] ❌ Invalid timestamp from {user_id}: {e}")
             return jsonify({
                 "success": False,
                 "error": "Invalid timestamp format"
@@ -167,12 +140,9 @@ def authenticate_secure():
         
         # Decrypt API key
         try:
-            print(f"\n🔓 Decrypting API key...")
             decrypted_api_key = crypto.decrypt(encrypted_api_key)
-            print(f"✅ Decrypted API key: {decrypted_api_key[:10]}...")
         except Exception as e:
-            print(f"❌ Decryption failed: {e}")
-            traceback.print_exc()
+            print(f"[AUTH] ❌ Decryption failed for {user_id}: {e}")
             return jsonify({
                 "success": False,
                 "error": "Decryption failed"
@@ -180,12 +150,11 @@ def authenticate_secure():
         
         # Validate decrypted API key using database
         if not db.verify_api_key(user_id, decrypted_api_key):
+            print(f"[AUTH] ❌ Invalid credentials for {user_id}")
             return jsonify({
                 "success": False,
                 "error": "Invalid credentials"
             }), 401
-        
-        print("✅ API key validated - user authenticated")
         
         # Find nearby RSUs (hardcoded)
         nearby_rsus = RSU_DATABASE.get(postcode, [])
@@ -209,14 +178,12 @@ def authenticate_secure():
         response_json = json.dumps(response_data)
         
         # Encrypt response
-        print(f"\n🔒 Encrypting response for VRU...")
         encrypted_response = crypto.encrypt(response_json, vru_crypto.public_key)
         
         # Sign response
-        print(f"✍️  Signing response...")
         response_signature = crypto.sign(response_json)
         
-        print(f"\n[STEP 2] ✅ Returning {len(nearby_rsus)} nearby RSUs")
+        print(f"[AUTH] ✅ Authenticated {user_id}, returning {len(nearby_rsus)} RSU(s)")
         
         return jsonify({
             "encrypted_response": encrypted_response,
@@ -224,8 +191,7 @@ def authenticate_secure():
         }), 200
         
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
-        traceback.print_exc()
+        print(f"[AUTH] ❌ Error: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
